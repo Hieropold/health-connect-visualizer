@@ -129,6 +129,44 @@ export function renderXAxisLabels(items, { marginLeft, barW, height, marginBotto
 }
 
 /**
+ * @param {number} totalMinutes
+ * @return {string} e.g. 452 -> "7h 32m", 27 -> "27m"
+ */
+export function formatDuration(totalMinutes) {
+  const h = Math.floor(totalMinutes / 60);
+  const m = Math.round(totalMinutes % 60);
+  return h === 0 ? `${m}m` : `${h}h ${m}m`;
+}
+
+/**
+ * Aligns sparse rows onto a continuous calendar-day domain (first row's day
+ * through last row's day inclusive), so a renderer can leave a true gap —
+ * no bar/mark, not an interpolated zero — for days without data instead of
+ * silently compressing them out by rendering one mark per array index. Each
+ * domain entry keeps its date even when `row` is null, since the x-axis
+ * must still label a gap day.
+ *
+ * @param {Array<any>} rows
+ * @param {(row: any) => string} getDay Returns a row's YYYY-MM-DD date.
+ * @return {Array<{day: string, row: any | null}>} One entry per calendar day.
+ */
+export function alignToDateDomain(rows, getDay) {
+  if (rows.length === 0) return [];
+
+  const byDay = new Map(rows.map((row) => [getDay(row), row]));
+  const days = [...byDay.keys()].sort();
+  const first = new Date(`${days[0]}T00:00:00Z`);
+  const last = new Date(`${days[days.length - 1]}T00:00:00Z`);
+
+  const domain = [];
+  for (let t = first.getTime(); t <= last.getTime(); t += 86400000) {
+    const day = new Date(t).toISOString().slice(0, 10);
+    domain.push({ day, row: byDay.get(day) ?? null });
+  }
+  return domain;
+}
+
+/**
  * Wires hover/move/leave listeners on a set of mark elements to show a
  * shared tooltip. Identical across panels; only `renderTooltip` (what text
  * to show for a given item) differs per panel, so it stays a callback

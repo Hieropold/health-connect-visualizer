@@ -14,6 +14,8 @@ import {
   formatFullDate,
   computeGridlines,
   computeLabelEvery,
+  alignToDateDomain,
+  formatDuration,
 } from "../public/chart.js";
 
 test("escapeHtml escapes the five HTML-significant characters", () => {
@@ -61,4 +63,38 @@ test("computeLabelEvery keeps roughly `target` labels across the range", () => {
   assert.equal(computeLabelEvery(7, 7), 1);
   assert.equal(computeLabelEvery(97, 7), 14);
   assert.equal(computeLabelEvery(1, 7), 1);
+});
+
+test("alignToDateDomain fills missing calendar days with a null row so gaps render as gaps", () => {
+  const rows = [
+    { day: "2022-01-08", v: 1 },
+    { day: "2022-01-10", v: 3 },
+  ];
+  const domain = alignToDateDomain(rows, (r) => r.day);
+  assert.deepEqual(domain, [
+    { day: "2022-01-08", row: rows[0] },
+    { day: "2022-01-09", row: null },
+    { day: "2022-01-10", row: rows[1] },
+  ]);
+});
+
+test("alignToDateDomain returns a single-item domain for one row", () => {
+  const rows = [{ day: "2022-01-08", v: 1 }];
+  assert.deepEqual(alignToDateDomain(rows, (r) => r.day), [{ day: "2022-01-08", row: rows[0] }]);
+});
+
+test("alignToDateDomain returns an empty domain for no rows", () => {
+  assert.deepEqual(alignToDateDomain([], (r) => r.day), []);
+});
+
+test("formatDuration renders hours and minutes", () => {
+  assert.equal(formatDuration(452), "7h 32m");
+});
+
+test("formatDuration omits the hour part under 60 minutes", () => {
+  assert.equal(formatDuration(27), "27m");
+});
+
+test("formatDuration rounds fractional minutes", () => {
+  assert.equal(formatDuration(90.6), "1h 31m");
 });

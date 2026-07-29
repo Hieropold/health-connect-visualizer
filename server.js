@@ -34,7 +34,7 @@ if (!existsSync(DB_PATH)) {
   process.exit(1);
 }
 
-const { stepsPerDay } = createDb(DB_PATH);
+const { stepsPerDay, sleepPerNight, heartRatePerDay } = createDb(DB_PATH);
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -78,6 +78,14 @@ const server = createServer((req, res) => {
     .then(() => {
       if (req.url === "/api/steps") {
         sendJson(res, stepsPerDay());
+        return;
+      }
+      if (req.url === "/api/sleep") {
+        sendJson(res, sleepPerNight());
+        return;
+      }
+      if (req.url === "/api/heart-rate") {
+        sendJson(res, heartRatePerDay());
         return;
       }
       return serveStatic(req, res);

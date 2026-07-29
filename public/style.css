@@ -12,6 +12,14 @@
   --text-muted:     #83817a;
   --series-1:       #2a78d6;
   --series-1-fill:  #2a78d633;
+  /* Sleep stage stack (Awake/Light/Deep/REM): categorical slots 1-4 in
+     fixed order, per the dataviz skill's palette — never reassigned per
+     panel. Slots 3 (aqua) and 4 (yellow) fall below 3:1 contrast on the
+     light surface, so the legend and tooltip always carry a visible text
+     label alongside the color (never color-only identity). */
+  --series-2:       #eb6834;
+  --series-3:       #1baf7a;
+  --series-4:       #eda100;
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) .viz-root {
@@ -24,6 +32,9 @@
     --text-muted:     #8b8a80;
     --series-1:       #3987e5;
     --series-1-fill:  #3987e544;
+    --series-2:       #d95926;
+    --series-3:       #199e70;
+    --series-4:       #c98500;
   }
 }
 :root[data-theme="dark"] .viz-root {
@@ -36,6 +47,9 @@
   --text-muted:     #8b8a80;
   --series-1:       #3987e5;
   --series-1-fill:  #3987e544;
+  --series-2:       #d95926;
+  --series-3:       #199e70;
+  --series-4:       #c98500;
 }
 
 * { box-sizing: border-box; }
@@ -164,4 +178,44 @@ body {
 
 .chart-wrap {
   position: relative;
+}
+
+.stage-awake { fill: var(--series-1); }
+.stage-light { fill: var(--series-2); }
+.stage-deep  { fill: var(--series-3); }
+.stage-rem   { fill: var(--series-4); }
+
+.chart-range-band {
+  fill: var(--series-1-fill);
+  stroke: var(--series-1);
+  stroke-width: 1;
+}
+.chart-range-avg {
+  fill: var(--series-1);
+  stroke: var(--surface-1);
+  stroke-width: 2;
+}
+.chart-hit {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.chart-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
 }
