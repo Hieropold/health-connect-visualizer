@@ -1,6 +1,9 @@
 // Steps-per-day panel: fetch /api/steps and render an SVG bar chart.
-// No chart library — one panel doesn't warrant one; see marks-and-anatomy.md
-// for the spacer/label conventions this follows.
+// No chart library — shared scales/axes/tooltip/formatting live in
+// chart.js; this file keeps only the fetch and the bar mark shape, which is
+// the part that differs per panel.
+
+import { escapeHtml, niceCeiling, computeGridlines, computeLabelEvery, renderGridSvg, renderXAxisLabels, attachTooltip, formatFullDate } from "./chart.js";
 
 const body = document.getElementById("steps-body");
 const stat = document.getElementById("steps-stat");
@@ -27,10 +30,6 @@ async function loadSteps() {
   renderChart(rows);
 }
 
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
 function renderChart(rows) {
   const width = 900;
   const height = 280;
@@ -48,16 +47,8 @@ function renderChart(rows) {
   const barGap = 2; // surface gap between adjacent bars
   const barW = plotW / rows.length;
 
-  const gridSteps = 4;
-  const gridlines = [];
-  for (let i = 0; i <= gridSteps; i++) {
-    const value = (niceMax / gridSteps) * i;
-    const y = marginTop + plotH - (value / niceMax) * plotH;
-    gridlines.push({ y, value });
-  }
-
-  // Label every Nth bar so labels don't collide (~7 labels across the range).
-  const labelEvery = Math.max(1, Math.ceil(rows.length / 7));
+  const gridlines = computeGridlines({ niceMax, marginTop, plotH });
+  const labelEvery = computeLabelEvery(rows.length);
 
   const bars = rows
     .map((r, i) => {
@@ -69,22 +60,8 @@ function renderChart(rows) {
     })
     .join("");
 
-  const gridSvg = gridlines
-    .map(
-      (g) => `
-      <line class="chart-gridline" x1="${marginLeft}" x2="${width - marginRight}" y1="${g.y.toFixed(2)}" y2="${g.y.toFixed(2)}" />
-      <text class="chart-axis-label" x="${marginLeft - 6}" y="${(g.y + 3).toFixed(2)}" text-anchor="end">${formatCompact(g.value)}</text>
-    `
-    )
-    .join("");
-
-  const xLabels = rows
-    .map((r, i) => {
-      if (i % labelEvery !== 0) return "";
-      const x = marginLeft + i * barW + barW / 2;
-      return `<text class="chart-axis-label" x="${x.toFixed(2)}" y="${height - 6}" text-anchor="middle">${formatShortDate(r.day)}</text>`;
-    })
-    .join("");
+  const gridSvg = renderGridSvg(gridlines, { marginLeft, width, marginRight });
+  const xLabels = renderXAxisLabels(rows, { marginLeft, barW, height, marginBottom, labelEvery, getDay: (r) => r.day });
 
   body.innerHTML = `
     <div class="chart-wrap">
@@ -100,59 +77,17 @@ function renderChart(rows) {
     </div>
   `;
 
-  attachHover(rows);
-}
-
-function attachHover(rows) {
   const wrap = body.querySelector(".chart-wrap");
   const tooltip = document.getElementById("chart-tooltip");
-  const ttDate = tooltip.querySelector(".tt-date");
-  const ttValue = tooltip.querySelector(".tt-value");
-
-  wrap.querySelectorAll(".chart-bar").forEach((bar) => {
-    bar.addEventListener("mouseenter", (e) => {
-      const i = Number(bar.dataset.i);
-      const r = rows[i];
-      ttDate.textContent = formatFullDate(r.day);
-      ttValue.textContent = `${r.steps.toLocaleString()} steps`;
-      tooltip.classList.add("visible");
-    });
-    bar.addEventListener("mousemove", (e) => {
-      const rect = wrap.getBoundingClientRect();
-      tooltip.style.left = `${e.clientX - rect.left}px`;
-      tooltip.style.top = `${e.clientY - rect.top - 8}px`;
-    });
-    bar.addEventListener("mouseleave", () => {
-      tooltip.classList.remove("visible");
-    });
+  attachTooltip({
+    wrap,
+    marks: wrap.querySelectorAll(".chart-bar"),
+    tooltip,
+    renderTooltip: (mark) => {
+      const r = rows[Number(mark.dataset.i)];
+      return { date: formatFullDate(r.day), value: `${r.steps.toLocaleString()} steps` };
+    },
   });
-}
-
-function niceCeiling(value) {
-  if (value <= 0) return 1;
-  const magnitude = 10 ** Math.floor(Math.log10(value));
-  const normalized = value / magnitude;
-  let niceNormalized;
-  if (normalized <= 1) niceNormalized = 1;
-  else if (normalized <= 2) niceNormalized = 2;
-  else if (normalized <= 5) niceNormalized = 5;
-  else niceNormalized = 10;
-  return niceNormalized * magnitude;
-}
-
-function formatCompact(n) {
-  if (n >= 1000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
-  return String(Math.round(n));
-}
-
-function formatShortDate(isoDate) {
-  const d = new Date(`${isoDate}T00:00:00Z`);
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-}
-
-function formatFullDate(isoDate) {
-  const d = new Date(`${isoDate}T00:00:00Z`);
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
 loadSteps();
