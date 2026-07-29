@@ -1,0 +1,14 @@
+{
+  "name": "health-connect-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal local dashboard over a Health Connect export DB.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test"
+  }
+}

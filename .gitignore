@@ -1,0 +1,6 @@
+# Agentic harness
+.agents/
+.claude/
+.gemini/
+
+start.sh

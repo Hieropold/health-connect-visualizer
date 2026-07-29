@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Health Connect Viewer</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="viz-root">
+  <header class="dash-header">
+    <h1>Health Connect</h1>
+    <p class="dash-subtitle">Local dashboard over <code>db/health_connect.db</code></p>
+  </header>
+
+  <main class="dash-grid">
+    <section class="panel" id="steps-panel">
+      <div class="panel-head">
+        <h2 class="panel-title">Steps per day</h2>
+        <div class="panel-stat" id="steps-stat"></div>
+      </div>
+      <div class="panel-body" id="steps-body">
+        <p class="panel-loading">Loading…</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
