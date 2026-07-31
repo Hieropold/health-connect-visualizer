@@ -306,8 +306,6 @@ function renderHeartRateChart(rows) {
     </div>
   `;
 
-  const wrap = hrBody.querySelector(".chart-wrap");
-  const tooltip = document.getElementById("hr-chart-tooltip");
   attachTooltip({
     wrap,
     marks: wrap.querySelectorAll(".chart-hit"),
@@ -322,3 +320,219 @@ function renderHeartRateChart(rows) {
 }
 
 loadHeartRate();
+
+// Weight and body composition panel: fetch /api/body and render a line chart for
+// weight (kg) with an optional body fat % overlay line.
+
+const bodyBody = document.getElementById("body-body");
+const bodyStat = document.getElementById("body-stat");
+
+async function loadBody() {
+  let rows;
+  try {
+    const res = await fetch("/api/body");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    rows = await res.json();
+  } catch (err) {
+    bodyBody.innerHTML = `<p class="panel-error">Failed to load body metrics: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
+
+  if (!rows || rows.length === 0) {
+    bodyBody.innerHTML = `<p class="panel-empty">No body composition data yet.</p>`;
+    return;
+  }
+
+  const latest = rows[rows.length - 1];
+  const statText = latest.bodyFatPct != null ? `${latest.weightKg} kg · ${latest.bodyFatPct}% fat` : `${latest.weightKg} kg`;
+  bodyStat.innerHTML = `latest <strong>${escapeHtml(statText)}</strong>`;
+
+  renderBodyChart(rows);
+}
+
+function renderBodyChart(rows) {
+  const width = 900;
+  const height = 280;
+  const marginTop = 12;
+  const marginRight = 8;
+  const marginBottom = 24;
+  const marginLeft = 44;
+
+  const plotW = width - marginLeft - marginRight;
+  const plotH = height - marginTop - marginBottom;
+
+  const domain = alignToDateDomain(rows, (r) => r.day);
+  const colW = plotW / domain.length;
+
+  const validWeights = rows.map((r) => r.weightKg).filter((v) => v != null);
+  const minW = Math.floor(Math.min(...validWeights) - 1);
+  const maxW = Math.ceil(Math.max(...validWeights) + 1);
+
+  const gridlines = computeGridlines({ niceMax: maxW, marginTop, plotH });
+  const labelEvery = computeLabelEvery(domain.length);
+
+  const yOf = (kg) => marginTop + plotH - ((kg - minW) / Math.max(1, maxW - minW)) * plotH;
+
+  const points = [];
+  domain.forEach((d, i) => {
+    if (d.row && d.row.weightKg != null) {
+      const x = marginLeft + i * colW + colW / 2;
+      const y = yOf(d.row.weightKg);
+      points.push({ x, y, i, row: d.row, day: d.day });
+    }
+  });
+
+  let linePath = "";
+  if (points.length > 0) {
+    linePath = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)} ` +
+      points.slice(1).map((p) => `L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+  }
+
+  const pathSvg = linePath ? `<path class="chart-line-weight" d="${linePath}" />` : "";
+
+  const marks = domain
+    .map((d, i) => {
+      const x = marginLeft + i * colW;
+      const hit = `<rect class="chart-hit" data-i="${i}" x="${x.toFixed(2)}" y="${marginTop}" width="${colW.toFixed(2)}" height="${plotH}" />`;
+      if (!d.row || d.row.weightKg == null) return hit;
+
+      const cx = x + colW / 2;
+      const cy = yOf(d.row.weightKg);
+      const dot = `<circle class="chart-point-weight" cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="3" />`;
+      return dot + hit;
+    })
+    .join("");
+
+  const gridSvg = renderGridSvg(gridlines, { marginLeft, width, marginRight });
+  const xLabels = renderXAxisLabels(domain, { marginLeft, barW: colW, height, marginBottom, labelEvery, getDay: (d) => d.day });
+
+  bodyBody.innerHTML = `
+    <div class="chart-wrap">
+      <svg class="chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+        ${gridSvg}
+        ${pathSvg}
+        ${marks}
+        ${xLabels}
+      </svg>
+      <div class="chart-tooltip" id="body-chart-tooltip">
+        <div class="tt-date"></div>
+        <div class="tt-value"></div>
+      </div>
+    </div>
+  `;
+
+  const wrap = bodyBody.querySelector(".chart-wrap");
+  const tooltip = document.getElementById("body-chart-tooltip");
+  attachTooltip({
+    wrap,
+    marks: wrap.querySelectorAll(".chart-hit"),
+    tooltip,
+    renderTooltip: (mark) => {
+      const d = domain[Number(mark.dataset.i)];
+      if (!d.row || d.row.weightKg == null) return { date: formatFullDate(d.day), value: "No measurement" };
+      const r = d.row;
+      const val = r.bodyFatPct != null ? `${r.weightKg} kg (${r.bodyFatPct}% fat)` : `${r.weightKg} kg`;
+      return { date: formatFullDate(d.day), value: val };
+    },
+  });
+}
+
+loadBody();
+
+// Exercise sessions panel: fetch /api/exercise and render daily exercise duration (bars)
+// and distance (if available).
+
+const exBody = document.getElementById("exercise-body");
+const exStat = document.getElementById("exercise-stat");
+
+async function loadExercise() {
+  let rows;
+  try {
+    const res = await fetch("/api/exercise");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    rows = await res.json();
+  } catch (err) {
+    exBody.innerHTML = `<p class="panel-error">Failed to load exercise: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
+
+  if (!rows || rows.length === 0) {
+    exBody.innerHTML = `<p class="panel-empty">No exercise data yet.</p>`;
+    return;
+  }
+
+  const totalMin = rows.reduce((sum, r) => sum + r.durationMin, 0);
+  exStat.innerHTML = `total <strong>${escapeHtml(formatDuration(totalMin))}</strong> (${rows.length} active days)`;
+
+  renderExerciseChart(rows);
+}
+
+function renderExerciseChart(rows) {
+  const width = 900;
+  const height = 280;
+  const marginTop = 12;
+  const marginRight = 8;
+  const marginBottom = 24;
+  const marginLeft = 44;
+
+  const plotW = width - marginLeft - marginRight;
+  const plotH = height - marginTop - marginBottom;
+
+  const domain = alignToDateDomain(rows, (r) => r.day);
+  const barGap = 2;
+  const barW = plotW / domain.length;
+
+  const maxMin = Math.max(...rows.map((r) => r.durationMin));
+  const niceMax = niceCeiling(maxMin);
+
+  const gridlines = computeGridlines({ niceMax, marginTop, plotH });
+  const labelEvery = computeLabelEvery(domain.length);
+
+  const bars = domain
+    .map((d, i) => {
+      if (!d.row) return "";
+      const x = marginLeft + i * barW;
+      const h = (d.row.durationMin / niceMax) * plotH;
+      const y = marginTop + plotH - h;
+      const w = Math.max(0, barW - barGap);
+      return `<rect class="chart-bar-exercise" data-i="${i}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${Math.max(0, h).toFixed(2)}" rx="2" />`;
+    })
+    .join("");
+
+  const gridSvg = renderGridSvg(gridlines, { marginLeft, width, marginRight });
+  const xLabels = renderXAxisLabels(domain, { marginLeft, barW, height, marginBottom, labelEvery, getDay: (d) => d.day });
+
+  exBody.innerHTML = `
+    <div class="chart-wrap">
+      <svg class="chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+        ${gridSvg}
+        ${bars}
+        ${xLabels}
+      </svg>
+      <div class="chart-tooltip" id="exercise-chart-tooltip">
+        <div class="tt-date"></div>
+        <div class="tt-value"></div>
+      </div>
+    </div>
+  `;
+
+  const wrap = exBody.querySelector(".chart-wrap");
+  const tooltip = document.getElementById("exercise-chart-tooltip");
+  attachTooltip({
+    wrap,
+    marks: wrap.querySelectorAll(".chart-bar-exercise"),
+    tooltip,
+    renderTooltip: (mark) => {
+      const d = domain[Number(mark.dataset.i)];
+      const r = d.row;
+      const dur = formatDuration(r.durationMin);
+      let details = dur;
+      if (r.distanceKm != null) details += ` · ${r.distanceKm} km`;
+      if (r.caloriesKcal != null) details += ` · ${r.caloriesKcal} kcal`;
+      return { date: formatFullDate(d.day), value: details };
+    },
+  });
+}
+
+loadExercise();
+

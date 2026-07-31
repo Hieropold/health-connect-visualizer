@@ -219,3 +219,21 @@ body {
   border-radius: 2px;
   display: inline-block;
 }
+
+.chart-line-weight {
+  fill: none;
+  stroke: var(--series-3);
+  stroke-width: 2;
+}
+.chart-point-weight {
+  fill: var(--series-3);
+}
+
+.chart-bar-exercise {
+  fill: var(--series-2);
+}
+.chart-bar-exercise:hover {
+  fill: var(--series-2);
+  filter: brightness(1.2);
+}
+

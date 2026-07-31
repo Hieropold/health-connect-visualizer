@@ -68,6 +68,37 @@ const HEART_RATE_PER_DAY_SQL = `
   order by day
 `;
 
+// Body composition reads raw record tables (weight_record_table,
+// body_fat_record_table) joining on local_date rather than using the
+// exporter-synthesised joined_body_metrics table — see docs/adr/0004-read-body-composition-from-raw-record-tables.md.
+// Weight is stored in grams (converted to kg by /1000.0). Empty string values
+// are sanitized with nullif() before casting to real to prevent cast('', 'real')
+// from returning 0.0 — see docs/task-more-graphs.md.
+const BODY_METRICS_PER_DAY_SQL = `
+  select date(cast(w.local_date as int) * 86400, 'unixepoch') as day,
+         round(avg(cast(nullif(w.weight, '') as real) / 1000.0), 1) as weightKg,
+         round(avg(cast(nullif(bf.percentage, '') as real)), 1) as bodyFatPct
+  from weight_record_table w
+  left join body_fat_record_table bf on w.local_date = bf.local_date
+  group by day
+  order by day
+`;
+
+// Exercise sessions joined with distance and total calories burned by start_time.
+// Converts UTC start/end epoch millis duration to minutes, metres to km, and
+// calories to kcal.
+const EXERCISE_PER_DAY_SQL = `
+  select date(cast(e.local_date as int) * 86400, 'unixepoch') as day,
+         round(sum((cast(nullif(e.end_time, '') as int) - cast(nullif(e.start_time, '') as int)) / 60000.0), 1) as durationMin,
+         round(sum(cast(nullif(d.distance, '') as real) / 1000.0), 2) as distanceKm,
+         round(sum(cast(nullif(c.energy, '') as real) / 1000.0), 1) as caloriesKcal
+  from exercise_session_record_table e
+  left join distance_record_table d on e.start_time = d.start_time
+  left join total_calories_burned_record_table c on e.start_time = c.start_time
+  group by day
+  order by day
+`;
+
 /**
  * Opens a Health Connect export DB read-only and returns its query functions.
  *
@@ -81,6 +112,8 @@ const HEART_RATE_PER_DAY_SQL = `
  *   stepsPerDay: () => Array<{day: string, steps: number}>,
  *   sleepPerNight: () => Array<{day: string, awake: number, light: number, deep: number, rem: number}>,
  *   heartRatePerDay: () => Array<{day: string, min: number, avg: number, max: number}>,
+ *   bodyMetricsPerDay: () => Array<{day: string, weightKg: number, bodyFatPct: number|null}>,
+ *   exercisePerDay: () => Array<{day: string, durationMin: number, distanceKm: number|null, caloriesKcal: number|null}>,
  * }}
  */
 export function createDb(dbPath) {
@@ -104,10 +137,20 @@ export function createDb(dbPath) {
     return db.prepare(HEART_RATE_PER_DAY_SQL).all();
   }
 
+  function bodyMetricsPerDay() {
+    return db.prepare(BODY_METRICS_PER_DAY_SQL).all();
+  }
+
+  function exercisePerDay() {
+    return db.prepare(EXERCISE_PER_DAY_SQL).all();
+  }
+
   return {
     stepsPerDay,
     sleepPerNight: memoize(sleepPerNight),
     heartRatePerDay: memoize(heartRatePerDay),
+    bodyMetricsPerDay: memoize(bodyMetricsPerDay),
+    exercisePerDay: memoize(exercisePerDay),
   };
 }
 

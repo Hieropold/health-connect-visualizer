@@ -194,3 +194,94 @@ test("heartRatePerDay deduplicates re-appended samples and computes min/avg/max 
 
   rmSync(path.dirname(dbPath), { recursive: true, force: true });
 });
+
+function makeBodyFixtureDb() {
+  const dir = mkdtempSync(path.join(tmpdir(), "health-connect-test-"));
+  const dbPath = path.join(dir, "fixture.db");
+  const setup = new DatabaseSync(dbPath);
+  setup.exec(`
+    create table weight_record_table (
+      local_date text,
+      weight text
+    );
+    create table body_fat_record_table (
+      local_date text,
+      percentage text
+    );
+  `);
+  const insertWeight = setup.prepare("insert into weight_record_table (local_date, weight) values (?, ?)");
+  const insertFat = setup.prepare("insert into body_fat_record_table (local_date, percentage) values (?, ?)");
+
+  // 2022-01-08: 99000g -> 99kg, 20% fat
+  insertWeight.run("19000", "99000");
+  insertFat.run("19000", "20.5");
+
+  // 2022-01-09: 100000g -> 100kg, fat is empty string '' (should yield null, not 0)
+  insertWeight.run("19001", "100000");
+  insertFat.run("19001", "");
+
+  setup.close();
+  return dbPath;
+}
+
+test("bodyMetricsPerDay joins raw tables, converts grams to kg, handles empty strings as null", () => {
+  const dbPath = makeBodyFixtureDb();
+  const { bodyMetricsPerDay } = createDb(dbPath);
+
+  const rows = bodyMetricsPerDay().map((row) => ({ ...row }));
+
+  assert.deepEqual(rows, [
+    { day: "2022-01-08", weightKg: 99, bodyFatPct: 20.5 },
+    { day: "2022-01-09", weightKg: 100, bodyFatPct: null },
+  ]);
+
+  rmSync(path.dirname(dbPath), { recursive: true, force: true });
+});
+
+function makeExerciseFixtureDb() {
+  const dir = mkdtempSync(path.join(tmpdir(), "health-connect-test-"));
+  const dbPath = path.join(dir, "fixture.db");
+  const setup = new DatabaseSync(dbPath);
+  setup.exec(`
+    create table exercise_session_record_table (
+      start_time text,
+      end_time text,
+      local_date text
+    );
+    create table distance_record_table (
+      start_time text,
+      distance text
+    );
+    create table total_calories_burned_record_table (
+      start_time text,
+      energy text
+    );
+  `);
+  const insertEx = setup.prepare(
+    "insert into exercise_session_record_table (start_time, end_time, local_date) values (?, ?, ?)"
+  );
+  const insertDist = setup.prepare("insert into distance_record_table (start_time, distance) values (?, ?)");
+  const insertCal = setup.prepare("insert into total_calories_burned_record_table (start_time, energy) values (?, ?)");
+
+  // 2022-01-08: 30 min (1800000 ms), 5000m -> 5km, 250000 cal -> 250 kcal
+  insertEx.run("1000000000000", "1000001800000", "19000");
+  insertDist.run("1000000000000", "5000");
+  insertCal.run("1000000000000", "250000");
+
+  setup.close();
+  return dbPath;
+}
+
+test("exercisePerDay converts millis to min, metres to km, calories to kcal", () => {
+  const dbPath = makeExerciseFixtureDb();
+  const { exercisePerDay } = createDb(dbPath);
+
+  const rows = exercisePerDay().map((row) => ({ ...row }));
+
+  assert.deepEqual(rows, [
+    { day: "2022-01-08", durationMin: 30, distanceKm: 5, caloriesKcal: 250 },
+  ]);
+
+  rmSync(path.dirname(dbPath), { recursive: true, force: true });
+});
+
